@@ -13,7 +13,7 @@ Features:
   - Fetch product image from DigiKey
 - Assign hex IDs to represent the physical location of the part in the inventory
 
-![Screenshot of UI](./screenshot.png)
+![Screenshot of UI](https://github.com/hydrogen602/ElectronicsInventorySystem/blob/main/screenshots/image.png?raw=true)
 
 # Running
 
