@@ -1,0 +1,23 @@
+# Generated
+__pycache__/
+*.pyc
+.DS_Store
+.coverage
+
+# Local env
+*.env
+!.sample.env
+docker-compose.override.yml
+local.mk
+local.md
+
+# Local config
+.vscode/
+
+# Testing stuff
+sandbox.py
+.dockerignore
+
+# TODO items:
+oauth.py
+

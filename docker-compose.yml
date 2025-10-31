@@ -1,0 +1,69 @@
+version: "3.1"
+
+services:
+  electronic-inv-sys:
+    image: hydrogen602/electronic-inv-sys
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      ENV: prod
+      MONGO_CONN: mongodb://${MONGO_ADMIN_NAME}:${MONGO_ADMIN_PASS}@mongo:27017/
+      ALLOWED_FRONTEND_URLS: # In the container, the frontend is served by the backend so no need for CORS
+      LOGURU_LEVEL: INFO
+      DIGIKEY_ID: ${DIGIKEY_ID}
+      DIGIKEY_KEY: ${DIGIKEY_KEY}
+      STRICT_ORDER_MATCHING: true
+      # ROOT_PATH: /inventory
+    ports:
+      - 4061:8000
+    networks:
+      - mongo-net
+    depends_on:
+      mongo:
+        condition: service_started
+
+  mongo:
+    image: mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ADMIN_NAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ADMIN_PASS}
+    ports:
+      - 27017:27017
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - mongo-net
+    # healthcheck:
+    #   test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+    #   interval: 10s
+    #   timeout: 10s
+    #   retries: 5
+    #   start_period: 10s
+
+  mongo-express:
+    image: mongo-express
+    restart: unless-stopped
+    ports:
+      - 8081:8081
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_ADMIN_NAME}
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_ADMIN_PASS}
+      ME_CONFIG_BASICAUTH_USERNAME: ${ME_USER_NAME}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${ME_USER_PASS}
+      ME_CONFIG_MONGODB_SERVER: mongo
+      ME_CONFIG_MONGODB_PORT: 27017
+    depends_on:
+      mongo:
+        condition: service_started
+    networks:
+      - mongo-net
+
+
+networks:
+  mongo-net:
+
+volumes:
+  mongo-data:
