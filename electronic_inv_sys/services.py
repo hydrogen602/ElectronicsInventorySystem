@@ -9,8 +9,11 @@ from electronic_inv_sys.contracts.repos import (
     InventoryRepository,
     ConfigRepository,
     MetadataRepository,
+    BomRepository,
 )
 from electronic_inv_sys.contracts.digikey_api import DigiKeyAPI
+from electronic_inv_sys.infrastructure.db.mongodb import MongoDataDB
+from electronic_inv_sys.infrastructure.db.mongodb.bom_repo import MongoBomRepo
 from electronic_inv_sys.infrastructure.db.mongodb.inventory_repo import (
     MongoInventoryRepo,
 )
@@ -26,7 +29,8 @@ class Services:
     config: ConfigRepository
     metadata: MetadataRepository
     digikey_api: DigiKeyAPI
-    bom: BomAnalysis
+    bom: BomRepository
+    bom_analysis: BomAnalysis
 
     def summary_of_implementations(self) -> str:
         return (
@@ -44,17 +48,20 @@ async def services_factory(config: EnvConfig):
 
     mongo_client: MongoClient[Any]
     # with requests.Session() as session, MongoClient(conn) as mongo_client:
-    with MongoClient(conn) as mongo_client:
+    with MongoClient[Any](conn) as mongo_client:
         async with httpx.AsyncClient() as session:
             metadata = MongoMetadataRepo(mongo_client, config.environment)
-            inventory = MongoInventoryRepo(mongo_client, config.environment)
+            db = MongoDataDB(mongo_client, config.environment)
+            inventory = MongoInventoryRepo(db)
+            bom = MongoBomRepo(db)
 
             services = Services(
                 inventory=inventory,
                 config=config,
                 metadata=metadata,
                 digikey_api=DigiKeyAPIImpl(session, metadata, config),
-                bom=BomAnalysis(inventory),
+                bom=bom,
+                bom_analysis=BomAnalysis(inventory),
             )
             yield services
 

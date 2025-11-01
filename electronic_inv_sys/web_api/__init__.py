@@ -2,13 +2,18 @@
 
 from typing import Annotated, Any, cast
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import StreamingResponse
 from loguru import logger
 import io
 import csv
 
-from electronic_inv_sys.logic.bom import Bom, FusionBomEntry
+from electronic_inv_sys.contracts.models import (
+    BomEntry,
+    FusionBomEntry,
+    NewBom,
+)
+from electronic_inv_sys.logic.bom import BomSource
 from electronic_inv_sys.util import Environment
 from electronic_inv_sys.web_api.api_models import (
     AddItemByBarcodeRequest,
@@ -123,7 +128,7 @@ async def add_items_by_pack_list_barcode(
     except KeyError:
         raise HTTPException(
             status_code=500,
-            detail=f"Item that was just imported not found. This is an internal error.",
+            detail="Item that was just imported not found. This is an internal error.",
         )
 
 
@@ -237,32 +242,51 @@ def match_bom_entry(
     return services.inventory.text_search(search, max_results=5)
 
 
-@router.post("/bom/parse/fusion360-gerber-export")
+def parse_bom_source(src: str) -> BomSource:
+    try:
+        return BomSource(src)
+    except ValueError:
+        valid_sources = [source.value for source in BomSource]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid source '{src}'. Valid sources: {', '.join(valid_sources)}",
+        )
+
+
+@router.post("/bom/parse/gerber-export")
 async def upload_zip(
     services: Annotated[Services, Depends(ServicesProviderSingleton.services)],
     file: UploadFile = File(...),
-) -> Bom:
+    src: str = Query(..., description="BOM source (e.g., 'fusion360')"),
+) -> NewBom:
     if file.content_type not in ("application/zip", "application/x-zip-compressed"):
         raise HTTPException(
             status_code=400, detail="Invalid file type. Only ZIP files are accepted."
         )
 
+    bom_source = parse_bom_source(src)
+
     zip_content = await file.read()
-    return services.bom.gerber_bom_analysis(zip_content)
+    return services.bom_analysis.gerber_bom_analysis(zip_content, bom_source)
 
 
-@router.post("/bom/parse/fusion360-gerber-export/csv")
+@router.post("/bom/parse/gerber-export/csv")
 async def upload_zip_to_csv(
     services: Annotated[Services, Depends(ServicesProviderSingleton.services)],
     file: UploadFile = File(...),
+    src: str = Query(..., description="BOM source (e.g., 'fusion360')"),
 ) -> StreamingResponse:
     if file.content_type not in ("application/zip", "application/x-zip-compressed"):
         raise HTTPException(
             status_code=400, detail="Invalid file type. Only ZIP files are accepted."
         )
 
+    bom_source = parse_bom_source(src)
+
     zip_content = await file.read()
-    rows: list[FusionBomEntry] = services.bom.gerber_bom_analysis(zip_content).rows
+    rows: list[BomEntry] = services.bom_analysis.gerber_bom_analysis(
+        zip_content, bom_source
+    ).rows
 
     if not rows:
         raise HTTPException(

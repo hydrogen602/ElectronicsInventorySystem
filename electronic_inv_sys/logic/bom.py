@@ -1,28 +1,31 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from enum import Enum
 import io
 from logging import info
 import re
-from typing import Annotated
 import zipfile
 
-from bson import ObjectId
 from pydantic import BaseModel
 
-from electronic_inv_sys.contracts.models import ObjectIdPydanticAnnotation
+from electronic_inv_sys.contracts.models import (
+    BomEntry,
+    FusionBomEntry,
+    NewBom,
+    ProjectInfo,
+)
+from electronic_inv_sys.contracts.repos import InventoryRepository
 
-# from electronic_inv_sys.contracts.repos import InventoryRepository
 
-
-class BomSource(ABC):
+class BomParser(ABC):
     @abstractmethod
-    def gerber_bom_analysis(self, gerber_data_zip: bytes) -> Bom: ...
+    def gerber_bom_analysis(self, gerber_data_zip: bytes) -> NewBom: ...
 
 
-class Fusion360BomSource(BomSource):
-
-    def gerber_bom_analysis(self, gerber_data_zip: bytes) -> Bom:
+class Fusion360BomParser(BomParser):
+    def gerber_bom_analysis(self, gerber_data_zip: bytes) -> NewBom:
         try:
             with zipfile.ZipFile(io.BytesIO(gerber_data_zip)) as zip_file:
                 assembly_files = [
@@ -56,7 +59,7 @@ class Fusion360BomSource(BomSource):
         except zipfile.BadZipFile:
             raise ValueError("Invalid ZIP file.")
 
-    def _parse_fusion360_bom(self, bom_text: str) -> Bom:
+    def _parse_fusion360_bom(self, bom_text: str) -> NewBom:
         lines = bom_text.strip().split("\n")
         if len(lines) < 3:
             raise ValueError("BOM text is too short to parse.")
@@ -126,7 +129,7 @@ class Fusion360BomSource(BomSource):
                 description=description,
                 manufacturer=manufacturer,
                 comments="",
-                inventory_item_mapping_ids=[],
+                inventory_item_mapping_ids=set(),
                 fusion360_ext=FusionBomEntry(
                     package=package,
                     category=category,
@@ -136,7 +139,7 @@ class Fusion360BomSource(BomSource):
             )
             rows.append(row)
 
-        return Bom(
+        return NewBom(
             info_line=info_line,
             rows=rows,
             project=ProjectInfo.empty(),
@@ -157,60 +160,25 @@ class ParseInfo(BaseModel):
         return text or None
 
 
-class ProjectInfo(BaseModel):
-    name: str | None
-    """The name of the project."""
-    author_names: str | None
-    """The names of the authors of the project."""
-    comments: str
-    """Comments about the project."""
-
-    @classmethod
-    def empty(cls) -> ProjectInfo:
-        return cls(name=None, author_names=None, comments="")
+class BomSource(Enum):
+    FUSION360 = "fusion360"
 
 
-class Bom(BaseModel):
-    info_line: str
-    """Info parsed from the BOM file."""
-    project: ProjectInfo
-    rows: list[BomEntry]
-    """The list of BOM entries."""
+class BomAnalysis:
+    """Wrapper around BOM sources that may need access to other services."""
 
+    def __init__(self, inventory_repo: InventoryRepository) -> None:
+        """Initialize with inventory repository for potential future matching features."""
+        self._inventory = inventory_repo
 
-class BomEntry(BaseModel):
-    """
-    Represents a single entry in a BOM.
-    """
+        self._parser_factories: dict[BomSource, Callable[[], BomParser]] = {
+            BomSource.FUSION360: Fusion360BomParser,
+        }
 
-    qty: int
-    """The quantity of the part in the BOM."""
-    value: str | None
-    """e.g. 10R or 0.1uF"""
-    device: str
-    """e.g. the part number or name of the part. Required for identifying the part"""
-    parts: list[str]
-    """e.g. by which names it is referred to in the gerber file, e.g. ["R1", "R2"]."""
-    description: str | None
-    """The description of the part."""
-    manufacturer: str | None
-    """The manufacturer of the part."""
+    def gerber_bom_analysis(self, gerber_data_zip: bytes, source: BomSource) -> NewBom:
+        parser = self._parser_factories[source]()
 
-    comments: str
-
-    inventory_item_mapping_ids: list[Annotated[ObjectId, ObjectIdPydanticAnnotation]]
-    """
-    List of which inventory items can be used where this part is used.
-    """
-
-    fusion360_ext: FusionBomEntry | None
-    """
-    Fusion360-specific extension data.
-    """
-
-
-class FusionBomEntry(BaseModel):
-    package: str
-    category: str | None
-    manufacturer_part_number: str | None
-    mpn: str | None
+        try:
+            return parser.gerber_bom_analysis(gerber_data_zip)
+        except Exception as e:
+            raise ValueError(f"Failed to parse BOM from {source}: {e}") from e

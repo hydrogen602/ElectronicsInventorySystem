@@ -118,7 +118,7 @@ def merge_and_import_item(
         # nothing to match -> just import
         logger.info("Importing new item without digikey number: {}", import_item)
         new_inv_item = map_inv_item_import_to_inv_item(import_item)
-        return repo.add_new_item(new_inv_item), MergeResult.NewItemWithoutDigikeyNumber
+        return repo.add_new(new_inv_item), MergeResult.NewItemWithoutDigikeyNumber
 
     existing_item = repo.get_item_by_digikey_part_number(new_digikey_part_number)
 
@@ -126,7 +126,7 @@ def merge_and_import_item(
         # no existing item -> just import
         logger.info("Importing new item: {}", import_item)
         new_inv_item = map_inv_item_import_to_inv_item(import_item)
-        return repo.add_new_item(new_inv_item), MergeResult.NewItemWithDigikeyNumber
+        return repo.add_new(new_inv_item), MergeResult.NewItemWithDigikeyNumber
 
     assert existing_item.digikey_part_number == new_digikey_part_number
 
