@@ -6,7 +6,10 @@ from fastapi.testclient import TestClient
 from bson import ObjectId
 from typing import AsyncGenerator, Generator
 
-from electronic_inv_sys.infrastructure.db.in_memory import InMemoryRepository
+from electronic_inv_sys.infrastructure.db.in_memory import (
+    InMemoryBomRepository,
+    InMemoryRepository,
+)
 from electronic_inv_sys.infrastructure.env_config import EnvConfig
 from electronic_inv_sys.infrastructure.metadata_store import MetadataFileStore
 from electronic_inv_sys.main import app
@@ -14,6 +17,7 @@ from electronic_inv_sys.contracts.models import ExistingInventoryItem
 from electronic_inv_sys.web_api.api_models import AddItemByBarcodeRequest
 from electronic_inv_sys.services import Services, ServicesProviderSingleton
 from electronic_inv_sys.util import Environment
+from electronic_inv_sys.logic.bom import BomAnalysis
 
 from tests.mocks import DigiKeyAPIImplModified
 
@@ -41,11 +45,15 @@ async def mock_services() -> AsyncGenerator[Services, None]:
     async with httpx.AsyncClient() as session:
         metadata = MetadataFileStore(path=".env.test.json")
         config = EnvConfig(dotenv_path=".env.test", env=Environment.TEST)
+
+        inventory = InMemoryRepository(d)
         services = Services(
-            inventory=InMemoryRepository(d),
+            inventory=inventory,
             config=config,
             metadata=metadata,
             digikey_api=DigiKeyAPIImplModified(session, metadata, config),
+            bom_analysis=BomAnalysis(inventory),
+            bom=InMemoryBomRepository({}),
         )
         yield services
 

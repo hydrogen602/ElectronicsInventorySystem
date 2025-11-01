@@ -8,12 +8,6 @@ from loguru import logger
 import io
 import csv
 
-from electronic_inv_sys.contracts.models import (
-    BomEntry,
-    ExistingBom,
-    FusionBomEntry,
-    NewBom,
-)
 from electronic_inv_sys.logic.bom import BomSource
 from electronic_inv_sys.util import Environment
 from electronic_inv_sys.web_api.api_models import (
@@ -24,7 +18,11 @@ from electronic_inv_sys.contracts.digikey_models.barcoding import (
     PackListBarcodeResponse,
 )
 from electronic_inv_sys.contracts.models import (
+    BomEntry,
     ExistingInventoryItem,
+    FusionBomEntry,
+    ExistingBom,
+    NewBom,
     ObjectIdPydanticAnnotation,
 )
 from electronic_inv_sys.infrastructure.digikey_mappers import (

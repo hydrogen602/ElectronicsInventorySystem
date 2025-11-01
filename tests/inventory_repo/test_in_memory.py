@@ -103,7 +103,7 @@ def test_add_new_item(inv_repo: InventoryRepository):
         item_description="New item",
         digikey_part_number="NEW123",
     )
-    new_id = inv_repo.add_new_item(new_item)
+    new_id = inv_repo.add_new(new_item)
     assert inv_repo[new_id].item_description == "New item"
 
 
@@ -148,9 +148,9 @@ def test_set_existing_item_raises_duplicate_error(inv_repo: InventoryRepository)
         available_quantity=5,
         item_description="Another test item",
     )
-    inv_repo.add_new_item(item1)
+    inv_repo.add_new(item1)
     with pytest.raises(DuplicateDigiKeyPartNumberError):
-        inv_repo.add_new_item(item2)
+        inv_repo.add_new(item2)
 
     # None is ok
     item3 = existing_inv_item(
