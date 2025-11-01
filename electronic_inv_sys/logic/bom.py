@@ -1,23 +1,30 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 import io
 from logging import info
 import re
+from typing import Annotated
 import zipfile
 
+from bson import ObjectId
 from pydantic import BaseModel
 
-from electronic_inv_sys.contracts.repos import InventoryRepository
+from electronic_inv_sys.contracts.models import ObjectIdPydanticAnnotation
+
+# from electronic_inv_sys.contracts.repos import InventoryRepository
 
 
-class BomAnalysis:
+class BomSource(ABC):
+    @abstractmethod
+    def gerber_bom_analysis(self, gerber_data_zip: bytes) -> Bom: ...
 
-    def __init__(self, inventory: InventoryRepository) -> None:
-        self.inventory = inventory
 
-    def gerber_bom_analysis(self, gerber_data: bytes) -> BomParse:
+class Fusion360BomSource(BomSource):
+
+    def gerber_bom_analysis(self, gerber_data_zip: bytes) -> Bom:
         try:
-            with zipfile.ZipFile(io.BytesIO(gerber_data)) as zip_file:
+            with zipfile.ZipFile(io.BytesIO(gerber_data_zip)) as zip_file:
                 assembly_files = [
                     f
                     for f in zip_file.namelist()
@@ -49,7 +56,7 @@ class BomAnalysis:
         except zipfile.BadZipFile:
             raise ValueError("Invalid ZIP file.")
 
-    def _parse_fusion360_bom(self, bom_text: str) -> BomParse:
+    def _parse_fusion360_bom(self, bom_text: str) -> Bom:
         lines = bom_text.strip().split("\n")
         if len(lines) < 3:
             raise ValueError("BOM text is too short to parse.")
@@ -82,7 +89,7 @@ class BomAnalysis:
         manufacturer_part_number_header = find_header("MANUFACTURER_PART_NUMBER")
         mpn_header = find_header("MPN")
 
-        rows: list[FusionBomEntry] = []
+        rows: list[BomEntry] = []
         for data_line in data_lines:
             qty_str = qty_header.extract_from_line(data_line)
             if not qty_str:
@@ -111,23 +118,28 @@ class BomAnalysis:
             )
             mpn = mpn_header.extract_from_line(data_line)
 
-            row = FusionBomEntry(
+            row = BomEntry(
                 qty=qty,
                 value=value,
                 device=device,
-                package=package,
                 parts=parts,
                 description=description,
-                category=category,
                 manufacturer=manufacturer,
-                manufacturer_part_number=manufacturer_part_number,
-                mpn=mpn,
+                comments="",
+                inventory_item_mapping_ids=[],
+                fusion360_ext=FusionBomEntry(
+                    package=package,
+                    category=category,
+                    manufacturer_part_number=manufacturer_part_number,
+                    mpn=mpn,
+                ),
             )
             rows.append(row)
 
-        return BomParse(
+        return Bom(
             info_line=info_line,
             rows=rows,
+            project=ProjectInfo.empty(),
         )
 
 
@@ -145,19 +157,60 @@ class ParseInfo(BaseModel):
         return text or None
 
 
-class BomParse(BaseModel):
+class ProjectInfo(BaseModel):
+    name: str | None
+    """The name of the project."""
+    author_names: str | None
+    """The names of the authors of the project."""
+    comments: str
+    """Comments about the project."""
+
+    @classmethod
+    def empty(cls) -> ProjectInfo:
+        return cls(name=None, author_names=None, comments="")
+
+
+class Bom(BaseModel):
     info_line: str
-    rows: list[FusionBomEntry]
+    """Info parsed from the BOM file."""
+    project: ProjectInfo
+    rows: list[BomEntry]
+    """The list of BOM entries."""
+
+
+class BomEntry(BaseModel):
+    """
+    Represents a single entry in a BOM.
+    """
+
+    qty: int
+    """The quantity of the part in the BOM."""
+    value: str | None
+    """e.g. 10R or 0.1uF"""
+    device: str
+    """e.g. the part number or name of the part. Required for identifying the part"""
+    parts: list[str]
+    """e.g. by which names it is referred to in the gerber file, e.g. ["R1", "R2"]."""
+    description: str | None
+    """The description of the part."""
+    manufacturer: str | None
+    """The manufacturer of the part."""
+
+    comments: str
+
+    inventory_item_mapping_ids: list[Annotated[ObjectId, ObjectIdPydanticAnnotation]]
+    """
+    List of which inventory items can be used where this part is used.
+    """
+
+    fusion360_ext: FusionBomEntry | None
+    """
+    Fusion360-specific extension data.
+    """
 
 
 class FusionBomEntry(BaseModel):
-    qty: int
-    value: str | None
-    device: str
     package: str
-    parts: list[str]
-    description: str | None
     category: str | None
-    manufacturer: str | None
     manufacturer_part_number: str | None
     mpn: str | None

@@ -33,4 +33,3 @@ make run-docker
   - [ ] given a BOM, list in which slot each part is found
   - [ ] Store non-digikey parts
   - [ ] UI for OAuth login
-- [ ]

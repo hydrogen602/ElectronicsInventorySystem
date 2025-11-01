@@ -17,6 +17,7 @@ local.md
 # Testing stuff
 sandbox.py
 .dockerignore
+internal_notes.md
 
 # TODO items:
 oauth.py

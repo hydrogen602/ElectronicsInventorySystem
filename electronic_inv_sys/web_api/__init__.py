@@ -8,7 +8,7 @@ from loguru import logger
 import io
 import csv
 
-from electronic_inv_sys.logic.bom import BomParse, FusionBomEntry
+from electronic_inv_sys.logic.bom import Bom, FusionBomEntry
 from electronic_inv_sys.util import Environment
 from electronic_inv_sys.web_api.api_models import (
     AddItemByBarcodeRequest,
@@ -241,7 +241,7 @@ def match_bom_entry(
 async def upload_zip(
     services: Annotated[Services, Depends(ServicesProviderSingleton.services)],
     file: UploadFile = File(...),
-) -> BomParse:
+) -> Bom:
     if file.content_type not in ("application/zip", "application/x-zip-compressed"):
         raise HTTPException(
             status_code=400, detail="Invalid file type. Only ZIP files are accepted."
