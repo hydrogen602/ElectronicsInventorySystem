@@ -1,10 +1,10 @@
 # BOM parsing
 
 - BOM management
-  - [ ] Store BOM in database
-  - [ ] UI + API to CRUD BOMs
+  - [x] Store BOM in database
+  - [x] UI + API to CRUD BOMs
     - [x] Parse BOM file from Fusion360
-    - [ ] Manually creation of BOMs
+    - [x] Manually creation of BOMs
 - BOM-Inventory matching
   - [ ] search inventory for matching parts
   - [ ] assign inventory items to BOM entries
