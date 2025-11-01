@@ -1,8 +1,9 @@
-from typing import Self
+from typing import Annotated, Self
 from bson import ObjectId
 from pydantic import BaseModel, ConfigDict, NonNegativeInt, PositiveInt
 
 from electronic_inv_sys.contracts.models import (
+    ObjectIdPydanticAnnotation,
     WithId,
 )
 
@@ -79,7 +80,7 @@ class MongoBomEntry(BaseModel):
     description: str | None
     manufacturer: str | None
     comments: str
-    inventory_item_mapping_ids: set[ObjectId]
+    inventory_item_mapping_ids: set[Annotated[ObjectId, ObjectIdPydanticAnnotation]]
     fusion360_ext: MongoFusionBomEntry | None
 
 

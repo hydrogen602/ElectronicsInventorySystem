@@ -10,6 +10,7 @@ import csv
 
 from electronic_inv_sys.contracts.models import (
     BomEntry,
+    ExistingBom,
     FusionBomEntry,
     NewBom,
 )
@@ -37,6 +38,8 @@ from electronic_inv_sys.logic.importer.merge import (
 from electronic_inv_sys.services import Services, ServicesProviderSingleton
 from electronic_inv_sys.web_api.common_commands import import_by_barcode
 from electronic_inv_sys.web_api.iphone import router as iphone_router
+
+# Note: after editing the API, run `make prepare-build` to regenerate the OpenAPI spec
 
 router = APIRouter()
 
@@ -315,3 +318,59 @@ async def upload_zip_to_csv(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=bom.csv"},
     )
+
+
+@router.get("/bom")
+def get_all_boms(
+    services: Annotated[Services, Depends(ServicesProviderSingleton.services)],
+) -> list[ExistingBom]:
+    """Get all BOMs."""
+    return list(services.bom.values())
+
+
+@router.get("/bom/{bom_id}")
+def get_bom(
+    bom_id: Annotated[ObjectId, ObjectIdPydanticAnnotation],
+    services: Annotated[Services, Depends(ServicesProviderSingleton.services)],
+) -> ExistingBom:
+    """Get a single BOM by ID."""
+    return services.bom[bom_id]
+
+
+@router.post("/bom")
+def create_bom(
+    bom: NewBom,
+    services: Annotated[Services, Depends(ServicesProviderSingleton.services)],
+) -> ExistingBom:
+    """Create a new BOM."""
+    bom_id = services.bom.add_new(bom)
+    return services.bom[bom_id]
+
+
+@router.put("/bom/{bom_id}")
+def update_bom(
+    bom_id: Annotated[ObjectId, ObjectIdPydanticAnnotation],
+    bom: ExistingBom,
+    services: Annotated[Services, Depends(ServicesProviderSingleton.services)],
+) -> ExistingBom:
+    """Update an existing BOM."""
+    if bom_id != bom.id:
+        raise HTTPException(
+            status_code=400, detail="BOM ID in path does not match BOM ID in body"
+        )
+    services.bom.set_existing_item(bom)
+    return services.bom[bom_id]
+
+
+@router.delete("/bom/{bom_id}")
+def delete_bom(
+    bom_id: Annotated[ObjectId, ObjectIdPydanticAnnotation],
+    services: Annotated[Services, Depends(ServicesProviderSingleton.services)],
+) -> None:
+    """Delete a BOM by ID."""
+    try:
+        del services.bom[bom_id]
+    except NotImplementedError:
+        raise HTTPException(status_code=501, detail="BOM deletion is not supported")
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"BOM with ID {bom_id} not found")

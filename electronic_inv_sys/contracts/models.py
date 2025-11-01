@@ -183,7 +183,7 @@ class BomEntry(BaseModel):
     description: str | None
     manufacturer: str | None
     comments: str
-    inventory_item_mapping_ids: set[ObjectId]
+    inventory_item_mapping_ids: set[Annotated[ObjectId, ObjectIdPydanticAnnotation]]
     fusion360_ext: FusionBomEntry | None
 
 
