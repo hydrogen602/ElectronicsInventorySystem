@@ -80,7 +80,9 @@ class MongoBomEntry(BaseModel):
     description: str | None
     manufacturer: str | None
     comments: str
-    inventory_item_mapping_ids: set[Annotated[ObjectId, ObjectIdPydanticAnnotation]]
+    inventory_item_mapping_ids: dict[
+        Annotated[ObjectId, ObjectIdPydanticAnnotation], None
+    ]
     fusion360_ext: MongoFusionBomEntry | None
 
 
@@ -91,10 +93,10 @@ class MongoProjectInfo(BaseModel):
 
 
 class MongoNewBom(BaseModel):
-    info_line: str
+    info_line: str | None
     project: MongoProjectInfo
     rows: list[MongoBomEntry]
-    name: str | None = None
+    name: str | None
 
 
 class MongoExistingBom(MongoNewBom, WithId):

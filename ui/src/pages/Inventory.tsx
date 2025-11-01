@@ -4,7 +4,7 @@ import SearchIcon from '@mui/icons-material/Search';
 
 import Header from "../Header";
 import { ExistingInventoryItem } from "../openapi/inventory";
-import CLIENT from "./inventory_components/client";
+import CLIENT from "../client";
 import OneRow from "./inventory_components/OneRow";
 import { MapSelf, useEnvironment } from "./inventory_components/utils";
 import { ErrorReporting } from "..";

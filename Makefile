@@ -2,6 +2,7 @@ compose-command := docker-compose
 
 # allow CORS access for frontend (e.g. create-react-app)
 run: export ALLOWED_FRONTEND_URLS = http://localhost:3000
+run: export ENV = dev
 
 run:
 	poetry run fastapi dev electronic_inv_sys

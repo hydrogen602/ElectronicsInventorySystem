@@ -143,6 +143,7 @@ class Fusion360BomParser(BomParser):
             info_line=info_line,
             rows=rows,
             project=ProjectInfo.empty(),
+            name=None,
         )
 
 

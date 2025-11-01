@@ -44,6 +44,62 @@ class MongoBomRepo(
             collection=db["boms"], mapper=mapper, db_existing_cls=MongoExistingBom
         )
 
+    def _db_map_to_contract_existing(self, item: MongoExistingBom) -> ExistingBom:
+        return ExistingBom(
+            info_line=item.info_line,
+            project=self._mapper.to(ProjectInfo).map(item.project),
+            rows=[
+                self._mapper.to(BomEntry).map(
+                    row,
+                    fields_mapping={
+                        "inventory_item_mapping_ids": set(
+                            row.inventory_item_mapping_ids.keys()
+                        )
+                    },
+                )
+                for row in item.rows
+            ],
+            name=item.name,
+            _id=item.id,
+        )
+
+    def _contract_map_to_db_existing(self, item: ExistingBom) -> MongoExistingBom:
+        return MongoExistingBom(
+            info_line=item.info_line,
+            project=self._mapper.to(MongoProjectInfo).map(item.project),
+            rows=[
+                self._mapper.to(MongoBomEntry).map(
+                    row,
+                    fields_mapping={
+                        "inventory_item_mapping_ids": {
+                            obj_id: None for obj_id in row.inventory_item_mapping_ids
+                        }
+                    },
+                )
+                for row in item.rows
+            ],
+            name=item.name,
+            _id=item.id,
+        )
+
+    def _contract_map_to_db_new(self, item: NewBom) -> MongoNewBom:
+        return MongoNewBom(
+            info_line=item.info_line,
+            project=self._mapper.to(MongoProjectInfo).map(item.project),
+            rows=[
+                self._mapper.to(MongoBomEntry).map(
+                    row,
+                    fields_mapping={
+                        "inventory_item_mapping_ids": {
+                            obj_id: None for obj_id in row.inventory_item_mapping_ids
+                        }
+                    },
+                )
+                for row in item.rows
+            ],
+            name=item.name,
+        )
+
 
 if __name__ == "__main__":
     dummy_client = MongoClient[Any](host="localhost", port=27017)

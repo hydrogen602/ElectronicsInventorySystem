@@ -157,6 +157,8 @@ async def update_item_details(
         await update_product_details(
             services.inventory[item_id], services.inventory, services.digikey_api
         )
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Item {item_id} not found")
     except Exception as e:
         logger.error(f"Failed to update product details for item {item_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update product details")

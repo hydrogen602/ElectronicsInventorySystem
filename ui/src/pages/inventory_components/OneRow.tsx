@@ -8,7 +8,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 
 import { ExistingInventoryItem } from "../../openapi/inventory";
 import { ErrorReporting } from "../..";
-import CLIENT from "./client";
+import CLIENT from "./../../client";
 import { MapSelf } from "./utils";
 import SlotIdSelect from "../components/SlotIdSelect";
 

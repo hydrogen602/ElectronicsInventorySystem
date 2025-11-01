@@ -200,12 +200,12 @@ class ProjectInfo(BaseModel):
 class NewBom(BaseModel):
     """BOM without an ID, for creating new BOMs."""
 
-    info_line: str
+    info_line: str | None
     """Info parsed from the BOM file."""
     project: ProjectInfo
     rows: list[BomEntry]
     """The list of BOM entries."""
-    name: str | None = None
+    name: str | None
     """Optional name for the BOM."""
 
 

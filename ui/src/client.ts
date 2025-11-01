@@ -1,4 +1,4 @@
-import { Configuration, DefaultApi } from "../../openapi/inventory";
+import { Configuration, DefaultApi } from "./openapi/inventory";
 
 export const BASE_URL = process.env.REACT_APP_INV_API as string;
 console.log(`Connecting to ${BASE_URL}`);
