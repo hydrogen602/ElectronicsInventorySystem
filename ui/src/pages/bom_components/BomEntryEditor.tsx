@@ -1,7 +1,11 @@
-import { Button, Card, FormControl, FormLabel, Input, Stack, Textarea, Typography } from "@mui/joy";
+import { Button, Card, Chip, ChipDelete, FormControl, FormLabel, Input, Stack, Textarea, Typography } from "@mui/joy";
 import DeleteIcon from '@mui/icons-material/Delete';
-import { useState, useEffect } from "react";
-import { BomEntry } from "../../openapi/inventory";
+import LinkIcon from '@mui/icons-material/Link';
+import { useState, useEffect, useCallback, useContext } from "react";
+import { BomEntry, ExistingInventoryItem } from "../../openapi/inventory";
+import InventoryItemSelector from "./InventoryItemSelector";
+import CLIENT from "../../client";
+import { ErrorReporting } from "../..";
 
 interface BomEntryEditorProps {
   entry: BomEntry;
@@ -12,10 +16,34 @@ interface BomEntryEditorProps {
 
 export default function BomEntryEditor({ entry, index, onUpdate, onRemove }: BomEntryEditorProps) {
   const [partsInput, setPartsInput] = useState(entry.parts?.join(', ') || '');
+  const [assignedItems, setAssignedItems] = useState<ExistingInventoryItem[]>([]);
+  const [selectorOpen, setSelectorOpen] = useState(false);
+  const setErr = useContext(ErrorReporting);
 
   useEffect(() => {
     setPartsInput(entry.parts?.join(', ') || '');
   }, [entry.parts]);
+
+  // Fetch assigned inventory items
+  useEffect(() => {
+    const fetchAssignedItems = async () => {
+      if (!entry.inventoryItemMappingIds || entry.inventoryItemMappingIds.size === 0) {
+        setAssignedItems([]);
+        return;
+      }
+
+      try {
+        const itemPromises = Array.from(entry.inventoryItemMappingIds).map(id =>
+          CLIENT.getItemApiItemItemIdGet({ itemId: id })
+        );
+        setAssignedItems(await Promise.all(itemPromises));
+      } catch (error) {
+        setErr(error);
+      }
+    };
+
+    fetchAssignedItems();
+  }, [entry.inventoryItemMappingIds, setErr]);
 
   const updateField = <K extends keyof BomEntry>(field: K, value: BomEntry[K]) => {
     onUpdate({ ...entry, [field]: value });
@@ -29,6 +57,19 @@ export default function BomEntryEditor({ entry, index, onUpdate, onRemove }: Bom
     const parts = partsInput.split(',').map(p => p.trim()).filter(p => p.length > 0);
     updateField('parts', parts);
   };
+
+  const handleAddInventoryItem = useCallback((itemId: string) => {
+    const newIds = new Set(entry.inventoryItemMappingIds);
+    newIds.add(itemId);
+    updateField('inventoryItemMappingIds', newIds);
+    setSelectorOpen(false);
+  }, [entry.inventoryItemMappingIds, updateField]);
+
+  const handleRemoveInventoryItem = useCallback((itemId: string) => {
+    const newIds = new Set(entry.inventoryItemMappingIds);
+    newIds.delete(itemId);
+    updateField('inventoryItemMappingIds', newIds);
+  }, [entry.inventoryItemMappingIds, updateField]);
 
   return (
     <Card variant="outlined">
@@ -108,7 +149,50 @@ export default function BomEntryEditor({ entry, index, onUpdate, onRemove }: Bom
             minRows={2}
           />
         </FormControl>
+
+        <Stack gap="0.5rem">
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <FormLabel>Assigned Inventory Items</FormLabel>
+            <Button
+              size="sm"
+              variant="soft"
+              startDecorator={<LinkIcon />}
+              onClick={() => setSelectorOpen(true)}
+            >
+              Match/Add Item
+            </Button>
+          </Stack>
+          {assignedItems.length > 0 ? (
+            <Stack direction="row" gap="0.5rem" flexWrap="wrap">
+              {assignedItems.map((item) => (
+                <Chip
+                  key={item.id}
+                  variant="soft"
+                  color="primary"
+                  endDecorator={
+                    <ChipDelete
+                      onDelete={() => handleRemoveInventoryItem(item.id)}
+                    />
+                  }
+                >
+                  {item.itemDescription} ({item.availableQuantity})
+                </Chip>
+              ))}
+            </Stack>
+          ) : (
+            <Typography level="body-sm" color="neutral">
+              No inventory items assigned. Click "Match/Add Item" to search and assign.
+            </Typography>
+          )}
+        </Stack>
       </Stack>
+
+      <InventoryItemSelector
+        bomEntry={entry}
+        open={selectorOpen}
+        onClose={() => setSelectorOpen(false)}
+        onSelect={handleAddInventoryItem}
+      />
     </Card>
   );
 }

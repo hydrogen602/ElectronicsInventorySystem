@@ -28,6 +28,9 @@ from electronic_inv_sys.contracts.models import (
 from electronic_inv_sys.infrastructure.digikey_mappers import (
     map_pack_list_to_import_items,
 )
+from electronic_inv_sys.logic.bom_matching import (
+    match_bom_entry_to_inventory as match_bom_entry_to_inventory_impl,
+)
 from electronic_inv_sys.logic.importer import new_item_importer, update_product_details
 from electronic_inv_sys.logic.importer.merge import (
     ManufacturerInfoMismatchError,
@@ -233,16 +236,21 @@ def search(
     return services.inventory.text_search(query)
 
 
-@router.get("/search/match-bom-entry")
-def match_bom_entry(
-    search: str,
+@router.post("/bom/match-inventory")
+def match_bom_entry_to_inventory(
+    bom_entry: BomEntry,
     services: Annotated[Services, Depends(ServicesProviderSingleton.services)],
+    max_results: int = Query(default=10, ge=1, le=50),
 ) -> list[ExistingInventoryItem]:
     """
-    the openapi-generator for typescript-fetch has a bug when dealing with lists of lists,
-    so I'm only doing one item at a time for now
+    Match a BOM entry to inventory items with intelligent ranking.
+
+    Prioritizes exact matches on manufacturer part number, then uses text search
+    for fuzzy matching on other fields.
     """
-    return services.inventory.text_search(search, max_results=5)
+    return match_bom_entry_to_inventory_impl(
+        bom_entry, services.inventory, max_results=max_results
+    )
 
 
 def parse_bom_source(src: str) -> BomSource:

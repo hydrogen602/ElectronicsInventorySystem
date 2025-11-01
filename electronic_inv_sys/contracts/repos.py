@@ -98,7 +98,8 @@ class InventoryRepository(CRUDRepository[NewInventoryItem, ExistingInventoryItem
     """
     Overwrite these for efficiency:
       keys, items, values, set_comments, set_quantity, set_product_details,
-      get_item_by_digikey_part_number, assign_to_slot, get_slot
+      get_item_by_digikey_part_number, assign_to_slot, get_slot,
+      get_items_by_manufacturer_part_numbers
     """
 
     @abstractmethod
@@ -203,6 +204,28 @@ class InventoryRepository(CRUDRepository[NewInventoryItem, ExistingInventoryItem
             if item.digikey_part_number == digikey_part_number:
                 return item
         return None
+
+    def get_items_by_manufacturer_part_numbers(
+        self, manufacturer_part_numbers: list[str]
+    ) -> list[ExistingInventoryItem]:
+        """
+        Get inventory items that match any of the given manufacturer part numbers.
+
+        Args:
+            manufacturer_part_numbers: List of manufacturer part numbers to search for.
+        Returns:
+            List of inventory items with matching manufacturer part numbers.
+        """
+        if not manufacturer_part_numbers:
+            return []
+        matches: list[ExistingInventoryItem] = []
+        for item in self.values():
+            if (
+                item.manufacturer_part_number
+                and item.manufacturer_part_number in manufacturer_part_numbers
+            ):
+                matches.append(item)
+        return matches
 
     def set_comments(self, id_: ObjectId, comments: str) -> None:
         """

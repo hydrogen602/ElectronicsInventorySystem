@@ -184,6 +184,21 @@ class MongoInventoryRepo(
             fields_mapping=self.__field_mapping_from_db(item),
         )
 
+    def get_items_by_manufacturer_part_numbers(
+        self, manufacturer_part_numbers: list[str]
+    ) -> list[ExistingInventoryItem]:
+        if not manufacturer_part_numbers:
+            return []
+
+        result = self._collection.find(
+            {"manufacturer_part_number": {"$in": manufacturer_part_numbers}}
+        )
+
+        return [
+            self._db_map_to_contract_existing(MongoExistingInventoryItem(**x))
+            for x in result
+        ]
+
     def get_slot(self, slot_id: int) -> list[ExistingInventoryItem]:
         result = self._collection.find({f"slot_ids.{slot_id}": {"$exists": True}})
 
