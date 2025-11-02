@@ -30,6 +30,6 @@ make run-docker
   - [x] add docker-compose that runs it all together (UI, backend, db)
 - [ ] features
   - [ ] mobile-friendly UI
-  - [ ] given a BOM, list in which slot each part is found
+  - [x] given a BOM, list in which slot each part is found
   - [ ] Store non-digikey parts
   - [ ] UI for OAuth login
