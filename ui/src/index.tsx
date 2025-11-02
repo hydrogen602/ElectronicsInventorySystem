@@ -9,6 +9,9 @@ import {
 
 import './index.css';
 import Inventory from './pages/Inventory';
+import BOM from './pages/BOM';
+import BomFormPage from './pages/BomFormPage';
+import BomViewPage from './pages/BomViewPage';
 import { Snackbar } from '@mui/joy';
 import ErrorIcon from '@mui/icons-material/Error';
 
@@ -26,6 +29,27 @@ const router = createBrowserRouter([
       {
         path: "",
         element: <Inventory />,
+      },
+      {
+        path: "bom",
+        children: [
+          {
+            path: "",
+            element: <BOM />,
+          },
+          {
+            path: "new",
+            element: <BomFormPage />,
+          },
+          {
+            path: ":id",
+            element: <BomViewPage />,
+          },
+          {
+            path: ":id/edit",
+            element: <BomFormPage />,
+          }
+        ]
       }
     ]
   }

@@ -1,4 +1,3 @@
-// file = Html5QrcodePlugin.tsx
 import { Html5QrcodeResult, Html5QrcodeScanner, Html5QrcodeScanType, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Html5QrcodeScannerConfig } from 'html5-qrcode/esm/html5-qrcode-scanner';
 import { useEffect, useId, useRef } from 'react';
@@ -17,7 +16,10 @@ interface Html5QrcodePluginProps {
   formatsToSupport?: Html5QrcodeSupportedFormats[];
 }
 
-
+/**
+ * Plugin to scan QR codes using the html5-qrcode library.
+ * Unreliable in practice
+ */
 function Html5QrcodePlugin(props: Html5QrcodePluginProps) {
   const nodeId = useId();
   const div = useRef<HTMLDivElement>(null);

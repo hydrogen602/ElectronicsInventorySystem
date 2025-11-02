@@ -18,7 +18,8 @@ openapi/inventory.json: $(ALL_PY_FILES)
 
 gen-openapi: src/openapi/marker
 src/openapi/marker: openapi/inventory.json
-	openapi-generator generate -i $< -g typescript-fetch -o src/openapi/inventory
+	openapi-generator generate -i $< -g typescript-fetch -o src/openapi/inventory 
 	touch $@
+#--additional-properties modelPropertyNaming=original
 
 prepare-build: gen-openapi

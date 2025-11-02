@@ -8,12 +8,12 @@ packages = [{ include = "electronic_inv_sys" }]
 
 [tool.poetry.dependencies]
 python = "^3.12"
-fastapi = {extras = ["standard"], version = "^0.115.3"}
+fastapi = { extras = ["standard"], version = "^0.115.3" }
 loguru = "^0.7.2"
 pymongo = "^4.10.1"
 pydantic = "^2.9.2"
 python-dotenv = "^1.0.1"
-py-automapper = "^1.2.3"
+py-automapper = "^2.2.0"
 python-levenshtein = "^0.26.0"
 httpx = "^0.27.2"
 

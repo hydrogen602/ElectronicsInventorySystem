@@ -2,13 +2,13 @@
 
 from typing import Annotated, Any, cast
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import StreamingResponse
 from loguru import logger
 import io
 import csv
 
-from electronic_inv_sys.logic.bom import BomParse, FusionBomEntry
+from electronic_inv_sys.logic.bom import BomSource
 from electronic_inv_sys.util import Environment
 from electronic_inv_sys.web_api.api_models import (
     AddItemByBarcodeRequest,
@@ -18,11 +18,18 @@ from electronic_inv_sys.contracts.digikey_models.barcoding import (
     PackListBarcodeResponse,
 )
 from electronic_inv_sys.contracts.models import (
+    BomEntry,
     ExistingInventoryItem,
+    FusionBomEntry,
+    ExistingBom,
+    NewBom,
     ObjectIdPydanticAnnotation,
 )
 from electronic_inv_sys.infrastructure.digikey_mappers import (
     map_pack_list_to_import_items,
+)
+from electronic_inv_sys.logic.bom_matching import (
+    match_bom_entry_to_inventory as match_bom_entry_to_inventory_impl,
 )
 from electronic_inv_sys.logic.importer import new_item_importer, update_product_details
 from electronic_inv_sys.logic.importer.merge import (
@@ -32,6 +39,8 @@ from electronic_inv_sys.logic.importer.merge import (
 from electronic_inv_sys.services import Services, ServicesProviderSingleton
 from electronic_inv_sys.web_api.common_commands import import_by_barcode
 from electronic_inv_sys.web_api.iphone import router as iphone_router
+
+# Note: after editing the API, run `make prepare-build` to regenerate the OpenAPI spec
 
 router = APIRouter()
 
@@ -123,7 +132,7 @@ async def add_items_by_pack_list_barcode(
     except KeyError:
         raise HTTPException(
             status_code=500,
-            detail=f"Item that was just imported not found. This is an internal error.",
+            detail="Item that was just imported not found. This is an internal error.",
         )
 
 
@@ -151,6 +160,8 @@ async def update_item_details(
         await update_product_details(
             services.inventory[item_id], services.inventory, services.digikey_api
         )
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Item {item_id} not found")
     except Exception as e:
         logger.error(f"Failed to update product details for item {item_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update product details")
@@ -225,44 +236,68 @@ def search(
     return services.inventory.text_search(query)
 
 
-@router.get("/search/match-bom-entry")
-def match_bom_entry(
-    search: str,
+@router.post("/bom/match-inventory")
+def match_bom_entry_to_inventory(
+    bom_entry: BomEntry,
     services: Annotated[Services, Depends(ServicesProviderSingleton.services)],
+    max_results: int = Query(default=10, ge=1, le=50),
 ) -> list[ExistingInventoryItem]:
     """
-    the openapi-generator for typescript-fetch has a bug when dealing with lists of lists,
-    so I'm only doing one item at a time for now
+    Match a BOM entry to inventory items with intelligent ranking.
+
+    Prioritizes exact matches on manufacturer part number, then uses text search
+    for fuzzy matching on other fields.
     """
-    return services.inventory.text_search(search, max_results=5)
+    return match_bom_entry_to_inventory_impl(
+        bom_entry, services.inventory, max_results=max_results
+    )
 
 
-@router.post("/bom/parse/fusion360-gerber-export")
+def parse_bom_source(src: str) -> BomSource:
+    try:
+        return BomSource(src)
+    except ValueError:
+        valid_sources = [source.value for source in BomSource]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid source '{src}'. Valid sources: {', '.join(valid_sources)}",
+        )
+
+
+@router.post("/bom/parse/gerber-export")
 async def upload_zip(
     services: Annotated[Services, Depends(ServicesProviderSingleton.services)],
     file: UploadFile = File(...),
-) -> BomParse:
+    src: str = Query(..., description="BOM source (e.g., 'fusion360')"),
+) -> NewBom:
     if file.content_type not in ("application/zip", "application/x-zip-compressed"):
         raise HTTPException(
             status_code=400, detail="Invalid file type. Only ZIP files are accepted."
         )
 
+    bom_source = parse_bom_source(src)
+
     zip_content = await file.read()
-    return services.bom.gerber_bom_analysis(zip_content)
+    return services.bom_analysis.gerber_bom_analysis(zip_content, bom_source)
 
 
-@router.post("/bom/parse/fusion360-gerber-export/csv")
+@router.post("/bom/parse/gerber-export/csv")
 async def upload_zip_to_csv(
     services: Annotated[Services, Depends(ServicesProviderSingleton.services)],
     file: UploadFile = File(...),
+    src: str = Query(..., description="BOM source (e.g., 'fusion360')"),
 ) -> StreamingResponse:
     if file.content_type not in ("application/zip", "application/x-zip-compressed"):
         raise HTTPException(
             status_code=400, detail="Invalid file type. Only ZIP files are accepted."
         )
 
+    bom_source = parse_bom_source(src)
+
     zip_content = await file.read()
-    rows: list[FusionBomEntry] = services.bom.gerber_bom_analysis(zip_content).rows
+    rows: list[BomEntry] = services.bom_analysis.gerber_bom_analysis(
+        zip_content, bom_source
+    ).rows
 
     if not rows:
         raise HTTPException(
@@ -291,3 +326,59 @@ async def upload_zip_to_csv(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=bom.csv"},
     )
+
+
+@router.get("/bom")
+def get_all_boms(
+    services: Annotated[Services, Depends(ServicesProviderSingleton.services)],
+) -> list[ExistingBom]:
+    """Get all BOMs."""
+    return list(services.bom.values())
+
+
+@router.get("/bom/{bom_id}")
+def get_bom(
+    bom_id: Annotated[ObjectId, ObjectIdPydanticAnnotation],
+    services: Annotated[Services, Depends(ServicesProviderSingleton.services)],
+) -> ExistingBom:
+    """Get a single BOM by ID."""
+    return services.bom[bom_id]
+
+
+@router.post("/bom")
+def create_bom(
+    bom: NewBom,
+    services: Annotated[Services, Depends(ServicesProviderSingleton.services)],
+) -> ExistingBom:
+    """Create a new BOM."""
+    bom_id = services.bom.add_new(bom)
+    return services.bom[bom_id]
+
+
+@router.put("/bom/{bom_id}")
+def update_bom(
+    bom_id: Annotated[ObjectId, ObjectIdPydanticAnnotation],
+    bom: ExistingBom,
+    services: Annotated[Services, Depends(ServicesProviderSingleton.services)],
+) -> ExistingBom:
+    """Update an existing BOM."""
+    if bom_id != bom.id:
+        raise HTTPException(
+            status_code=400, detail="BOM ID in path does not match BOM ID in body"
+        )
+    services.bom.set_existing_item(bom)
+    return services.bom[bom_id]
+
+
+@router.delete("/bom/{bom_id}")
+def delete_bom(
+    bom_id: Annotated[ObjectId, ObjectIdPydanticAnnotation],
+    services: Annotated[Services, Depends(ServicesProviderSingleton.services)],
+) -> None:
+    """Delete a BOM by ID."""
+    try:
+        del services.bom[bom_id]
+    except NotImplementedError:
+        raise HTTPException(status_code=501, detail="BOM deletion is not supported")
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"BOM with ID {bom_id} not found")

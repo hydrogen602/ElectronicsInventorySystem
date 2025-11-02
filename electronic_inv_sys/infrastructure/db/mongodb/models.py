@@ -1,9 +1,9 @@
-from typing import Annotated, Self
+from typing import Self
 from bson import ObjectId
-from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt
+from pydantic import BaseModel, ConfigDict, NonNegativeInt, PositiveInt
 
 from electronic_inv_sys.contracts.models import (
-    ObjectIdPydanticAnnotation,
+    WithId,
 )
 
 
@@ -50,17 +50,58 @@ class MongoNewInventoryItem(BaseModel):
     product_details: MongoDigiKeyProductDetails | None
 
 
-class MongoExistingInventoryItem(MongoNewInventoryItem):
+class MongoExistingInventoryItem(MongoNewInventoryItem, WithId):
     """
     Items coming from the database have an ID.
 
     This class is frozen as updates should be done through the repository, not by modifying the object.
     """
 
-    id: Annotated[ObjectId, ObjectIdPydanticAnnotation] = Field(alias="_id")
-
     model_config = ConfigDict(frozen=True)
 
     @classmethod
     def from_parent(cls, parent: MongoNewInventoryItem, id: ObjectId) -> Self:
+        return cls(**parent.model_dump(), _id=id)
+
+
+class MongoFusionBomEntry(BaseModel):
+    package: str
+    category: str | None
+    manufacturer_part_number: str | None
+    mpn: str | None
+
+
+class MongoBomEntry(BaseModel):
+    qty: int
+    value: str | None
+    device: str
+    parts: list[str]
+    description: str | None
+    manufacturer: str | None
+    comments: str
+    inventory_item_mapping_ids: dict[
+        str, None
+    ]  # ObjectId stored as str because of bson only does string keys
+    fusion360_ext: MongoFusionBomEntry | None
+    do_not_place: bool = False
+
+
+class MongoProjectInfo(BaseModel):
+    name: str | None
+    author_names: str | None
+    comments: str
+
+
+class MongoNewBom(BaseModel):
+    info_line: str | None
+    project: MongoProjectInfo
+    rows: list[MongoBomEntry]
+    name: str | None
+
+
+class MongoExistingBom(MongoNewBom, WithId):
+    model_config = ConfigDict(frozen=True)
+
+    @classmethod
+    def from_parent(cls, parent: MongoNewBom, id: ObjectId) -> Self:
         return cls(**parent.model_dump(), _id=id)

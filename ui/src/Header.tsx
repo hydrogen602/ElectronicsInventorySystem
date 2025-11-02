@@ -73,6 +73,7 @@ function Header(props: { tools?: JSX.Element }) {
     }} component="header">
       <Stack direction="row" gap="2rem">
         <LinkTo to="/" title="Inventory" location={location} />
+        <LinkTo to="/bom" title="BOMs" location={location} />
       </Stack>
       <Stack direction="row" gap="2rem" alignItems="center">
         {props.tools}

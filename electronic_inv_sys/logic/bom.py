@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
+from collections.abc import Callable
+from enum import Enum
 import io
 from logging import info
 import re
@@ -7,17 +10,24 @@ import zipfile
 
 from pydantic import BaseModel
 
+from electronic_inv_sys.contracts.models import (
+    BomEntry,
+    FusionBomEntry,
+    NewBom,
+    ProjectInfo,
+)
 from electronic_inv_sys.contracts.repos import InventoryRepository
 
 
-class BomAnalysis:
+class BomParser(ABC):
+    @abstractmethod
+    def gerber_bom_analysis(self, gerber_data_zip: bytes) -> NewBom: ...
 
-    def __init__(self, inventory: InventoryRepository) -> None:
-        self.inventory = inventory
 
-    def gerber_bom_analysis(self, gerber_data: bytes) -> BomParse:
+class Fusion360BomParser(BomParser):
+    def gerber_bom_analysis(self, gerber_data_zip: bytes) -> NewBom:
         try:
-            with zipfile.ZipFile(io.BytesIO(gerber_data)) as zip_file:
+            with zipfile.ZipFile(io.BytesIO(gerber_data_zip)) as zip_file:
                 assembly_files = [
                     f
                     for f in zip_file.namelist()
@@ -49,7 +59,7 @@ class BomAnalysis:
         except zipfile.BadZipFile:
             raise ValueError("Invalid ZIP file.")
 
-    def _parse_fusion360_bom(self, bom_text: str) -> BomParse:
+    def _parse_fusion360_bom(self, bom_text: str) -> NewBom:
         lines = bom_text.strip().split("\n")
         if len(lines) < 3:
             raise ValueError("BOM text is too short to parse.")
@@ -82,7 +92,7 @@ class BomAnalysis:
         manufacturer_part_number_header = find_header("MANUFACTURER_PART_NUMBER")
         mpn_header = find_header("MPN")
 
-        rows: list[FusionBomEntry] = []
+        rows: list[BomEntry] = []
         for data_line in data_lines:
             qty_str = qty_header.extract_from_line(data_line)
             if not qty_str:
@@ -111,23 +121,29 @@ class BomAnalysis:
             )
             mpn = mpn_header.extract_from_line(data_line)
 
-            row = FusionBomEntry(
+            row = BomEntry(
                 qty=qty,
                 value=value,
                 device=device,
-                package=package,
                 parts=parts,
                 description=description,
-                category=category,
                 manufacturer=manufacturer,
-                manufacturer_part_number=manufacturer_part_number,
-                mpn=mpn,
+                comments="",
+                inventory_item_mapping_ids=set(),
+                fusion360_ext=FusionBomEntry(
+                    package=package,
+                    category=category,
+                    manufacturer_part_number=manufacturer_part_number,
+                    mpn=mpn,
+                ),
             )
             rows.append(row)
 
-        return BomParse(
+        return NewBom(
             info_line=info_line,
             rows=rows,
+            project=ProjectInfo.empty(),
+            name=None,
         )
 
 
@@ -145,19 +161,25 @@ class ParseInfo(BaseModel):
         return text or None
 
 
-class BomParse(BaseModel):
-    info_line: str
-    rows: list[FusionBomEntry]
+class BomSource(Enum):
+    FUSION360 = "fusion360"
 
 
-class FusionBomEntry(BaseModel):
-    qty: int
-    value: str | None
-    device: str
-    package: str
-    parts: list[str]
-    description: str | None
-    category: str | None
-    manufacturer: str | None
-    manufacturer_part_number: str | None
-    mpn: str | None
+class BomAnalysis:
+    """Wrapper around BOM sources that may need access to other services."""
+
+    def __init__(self, inventory_repo: InventoryRepository) -> None:
+        """Initialize with inventory repository for potential future matching features."""
+        self._inventory = inventory_repo
+
+        self._parser_factories: dict[BomSource, Callable[[], BomParser]] = {
+            BomSource.FUSION360: Fusion360BomParser,
+        }
+
+    def gerber_bom_analysis(self, gerber_data_zip: bytes, source: BomSource) -> NewBom:
+        parser = self._parser_factories[source]()
+
+        try:
+            return parser.gerber_bom_analysis(gerber_data_zip)
+        except Exception as e:
+            raise ValueError(f"Failed to parse BOM from {source}: {e}") from e

@@ -35,6 +35,15 @@ class ObjectIdPydanticAnnotation:
         return handler(core_schema.str_schema())
 
 
+class WithId(BaseModel):
+    id: Annotated[ObjectId, ObjectIdPydanticAnnotation] = Field(alias="_id")
+
+
+# TODO: Implement soft delete
+# class SoftDelete(BaseModel):
+#     is_deleted: bool = Field(default=False, alias="_is_deleted")
+
+
 class ProductOrderInfo(BaseModel):
     product_description: str | None
     quantity: PositiveInt
@@ -145,17 +154,71 @@ class NewInventoryItem(BaseModel):
     product_details: DigiKeyProductDetails | None
 
 
-class ExistingInventoryItem(NewInventoryItem):
+class ExistingInventoryItem(NewInventoryItem, WithId):
     """
     Items coming from the database have an ID.
 
     This class is frozen as updates should be done through the repository, not by modifying the object.
     """
 
-    id: Annotated[ObjectId, ObjectIdPydanticAnnotation] = Field(alias="_id")
-
     model_config = ConfigDict(frozen=True)
 
     @classmethod
     def from_parent(cls, parent: NewInventoryItem, id: ObjectId) -> Self:
+        return cls(**parent.model_dump(), _id=id)
+
+
+class FusionBomEntry(BaseModel):
+    package: str
+    category: str | None
+    manufacturer_part_number: str | None
+    mpn: str | None
+
+
+class BomEntry(BaseModel):
+    qty: int
+    value: str | None
+    device: str
+    parts: list[str]
+    description: str | None
+    manufacturer: str | None
+    comments: str
+    inventory_item_mapping_ids: set[Annotated[ObjectId, ObjectIdPydanticAnnotation]]
+    fusion360_ext: FusionBomEntry | None
+    do_not_place: bool = False
+
+
+class ProjectInfo(BaseModel):
+    name: str | None
+    author_names: str | None
+    comments: str
+
+    @classmethod
+    def empty(cls) -> "ProjectInfo":
+        return cls(name=None, author_names=None, comments="")
+
+
+class NewBom(BaseModel):
+    """BOM without an ID, for creating new BOMs."""
+
+    info_line: str | None
+    """Info parsed from the BOM file."""
+    project: ProjectInfo
+    rows: list[BomEntry]
+    """The list of BOM entries."""
+    name: str | None
+    """Optional name for the BOM."""
+
+
+class ExistingBom(NewBom, WithId):
+    """
+    BOMs coming from the database have an ID.
+
+    This class is frozen as updates should be done through the repository, not by modifying the object.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    @classmethod
+    def from_parent(cls, parent: NewBom, id: ObjectId) -> Self:
         return cls(**parent.model_dump(), _id=id)

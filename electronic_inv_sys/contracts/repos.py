@@ -5,9 +5,12 @@ from bson import ObjectId
 from loguru import logger
 
 from electronic_inv_sys.contracts.models import (
+    ExistingBom,
     DigiKeyProductDetails,
     ExistingInventoryItem,
+    NewBom,
     NewInventoryItem,
+    WithId,
 )
 from electronic_inv_sys.util import Environment, JSONValue
 
@@ -74,36 +77,30 @@ class DuplicateDigiKeyPartNumberError(Exception):
         super().__init__(f"Item.ids: '{existing_id}' vs '{new_id}'", *args)
 
 
-class InventoryRepository(ABC, Mapping[ObjectId, ExistingInventoryItem]):
+class CRUDRepository[N, E: WithId](ABC, MutableMapping[ObjectId, E]):
+    """
+    'N' is the type of the new item, 'E' is the type of the existing item.
+    """
+
+    @abstractmethod
+    def add_new(self, item: N) -> ObjectId:
+        """
+        Add a new item to the repository.
+        """
+        ...
+
+    def set_existing_item(self, item: E) -> None:
+        """Update an existing item in the repository."""
+        self.__setitem__(item.id, item)
+
+
+class InventoryRepository(CRUDRepository[NewInventoryItem, ExistingInventoryItem]):
     """
     Overwrite these for efficiency:
       keys, items, values, set_comments, set_quantity, set_product_details,
-      get_item_by_digikey_part_number, assign_to_slot, get_slot
+      get_item_by_digikey_part_number, assign_to_slot, get_slot,
+      get_items_by_manufacturer_part_numbers
     """
-
-    @abstractmethod
-    def set_existing_item(self, item: ExistingInventoryItem) -> None:
-        """
-        Set an inventory item in the inventory.
-
-        Args:
-            item (InventoryItemV3): The item to set.
-        Throws:
-            DuplicateDigiKeyPartNumberError: If the item's DigiKey part number is already in the inventory under
-                a different ObjectID.
-            KeyError: If the item's ObjectID is not found in the inventory already.
-        """
-
-    @abstractmethod
-    def add_new_item(self, item: NewInventoryItem) -> ObjectId:
-        """
-        Add a new item to the inventory.
-
-        Args:
-            item (NewInventoryItem): The item to add.
-        Returns:
-            ObjectId: The ID of the new item.
-        """
 
     @abstractmethod
     def text_search(
@@ -208,6 +205,28 @@ class InventoryRepository(ABC, Mapping[ObjectId, ExistingInventoryItem]):
                 return item
         return None
 
+    def get_items_by_manufacturer_part_numbers(
+        self, manufacturer_part_numbers: list[str]
+    ) -> list[ExistingInventoryItem]:
+        """
+        Get inventory items that match any of the given manufacturer part numbers.
+
+        Args:
+            manufacturer_part_numbers: List of manufacturer part numbers to search for.
+        Returns:
+            List of inventory items with matching manufacturer part numbers.
+        """
+        if not manufacturer_part_numbers:
+            return []
+        matches: list[ExistingInventoryItem] = []
+        for item in self.values():
+            if (
+                item.manufacturer_part_number
+                and item.manufacturer_part_number in manufacturer_part_numbers
+            ):
+                matches.append(item)
+        return matches
+
     def set_comments(self, id_: ObjectId, comments: str) -> None:
         """
         Sets the comments of an inventory item.
@@ -257,3 +276,7 @@ class InventoryRepository(ABC, Mapping[ObjectId, ExistingInventoryItem]):
         del item_data["product_details"]
         item = ExistingInventoryItem(**item_data, product_details=product_details)
         self.set_existing_item(item)
+
+
+class BomRepository(CRUDRepository[NewBom, ExistingBom]):
+    """Repository for storing and retrieving BOMs."""

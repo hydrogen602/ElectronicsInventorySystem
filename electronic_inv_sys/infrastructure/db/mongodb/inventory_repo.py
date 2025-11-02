@@ -1,8 +1,5 @@
-from collections.abc import ItemsView, Iterator, KeysView, ValuesView
 from typing import Any
 from bson.objectid import ObjectId
-from loguru import logger
-from pymongo import MongoClient
 from automapper import Mapper  # pyright: ignore[reportMissingTypeStubs]
 
 from electronic_inv_sys.contracts.models import (
@@ -15,40 +12,40 @@ from electronic_inv_sys.contracts.repos import (
     DuplicateDigiKeyPartNumberError,
     InventoryRepository,
 )
+from electronic_inv_sys.infrastructure.db.mongodb import MongoDataDB
+from electronic_inv_sys.infrastructure.db.mongodb.bom_repo import RepoMixin
 from electronic_inv_sys.infrastructure.db.mongodb.models import (
     MongoDigiKeyProductDetails,
     MongoExistingInventoryItem,
     MongoNewInventoryItem,
     MongoProductOrderInfo,
 )
-from electronic_inv_sys.util import Environment, pydantic_automapper_extend
+from electronic_inv_sys.util import pydantic_automapper_extend
 
 
-class MongoInventoryRepo(InventoryRepository):
-    def __init__(self, client: MongoClient[Any], env: Environment) -> None:
-        self.__mapper = Mapper()
-        pydantic_automapper_extend(self.__mapper)
-        self.__mapper.add(NewInventoryItem, MongoNewInventoryItem)
-        self.__mapper.add(ExistingInventoryItem, MongoExistingInventoryItem)
-        self.__mapper.add(MongoExistingInventoryItem, ExistingInventoryItem)
-        self.__mapper.add(MongoDigiKeyProductDetails, DigiKeyProductDetails)
-        self.__mapper.add(DigiKeyProductDetails, MongoDigiKeyProductDetails)
-        self.__mapper.add(ProductOrderInfo, MongoProductOrderInfo)
-        self.__mapper.add(MongoProductOrderInfo, ProductOrderInfo)
+class MongoInventoryRepo(
+    RepoMixin[
+        NewInventoryItem,
+        ExistingInventoryItem,
+        MongoNewInventoryItem,
+        MongoExistingInventoryItem,
+    ],
+    InventoryRepository,
+):
+    def __init__(self, db: MongoDataDB) -> None:
+        mapper = Mapper()
+        pydantic_automapper_extend(mapper)
+        mapper.add(NewInventoryItem, MongoNewInventoryItem)
+        mapper.add(ExistingInventoryItem, MongoExistingInventoryItem)
+        mapper.add(MongoExistingInventoryItem, ExistingInventoryItem)
+        mapper.add(MongoDigiKeyProductDetails, DigiKeyProductDetails)
+        mapper.add(DigiKeyProductDetails, MongoDigiKeyProductDetails)
+        mapper.add(ProductOrderInfo, MongoProductOrderInfo)
+        mapper.add(MongoProductOrderInfo, ProductOrderInfo)
 
-        match env:
-            case Environment.DEV:
-                db = client["electronic_inv_sys_dev"]
-                logger.info("Using dev database")
-            case Environment.PROD:
-                db = client["electronic_inv_sys"]
-                logger.info("Using prod database")
-            case Environment.TEST:
-                raise ValueError("Don't use MongoInventoryRepo in test environment")
+        collection = db["inventory"]
 
-        self.__collection = db["inventory"]
-
-        self.__collection.create_index(
+        collection.create_index(
             [
                 ("item_description", "text"),
                 ("digikey_part_number", "text"),
@@ -69,10 +66,16 @@ class MongoInventoryRepo(InventoryRepository):
             },
         )
 
+        super().__init__(
+            collection=collection,
+            mapper=mapper,
+            db_existing_cls=MongoExistingInventoryItem,
+        )
+
     def text_search(
         self, query: str, max_results: int | None = None
     ) -> list[ExistingInventoryItem]:
-        result = self.__collection.find(
+        result = self._collection.find(
             {"$text": {"$search": query}},
             {"score": {"$meta": "textScore"}},
             limit=max_results or 0,
@@ -82,7 +85,7 @@ class MongoInventoryRepo(InventoryRepository):
         for x in result:
             item = MongoExistingInventoryItem(**x)
             output.append(
-                self.__mapper.map(
+                self._mapper.map(
                     item,
                     fields_mapping=self.__field_mapping_from_db(item),
                 )
@@ -111,66 +114,40 @@ class MongoInventoryRepo(InventoryRepository):
             common["_id"] = item.id
         return common
 
-    def __getitem__(self, key: ObjectId) -> ExistingInventoryItem:
-        x = self.__collection.find_one({"_id": key})
-        if x is None:
-            raise KeyError(f"No item found for key {key}")
-        item = MongoExistingInventoryItem(**x)
-        return self.__mapper.map(
-            item,
-            fields_mapping=self.__field_mapping_from_db(item),
-        )
+    def _db_map_to_contract_existing(
+        self, item: MongoExistingInventoryItem
+    ) -> ExistingInventoryItem:
+        return self._mapper.map(item, fields_mapping=self.__field_mapping_from_db(item))
 
-    def __iter__(self) -> Iterator[ObjectId]:
-        return iter(self.__collection.find({}, {"_id": 1}))
+    def _contract_map_to_db_existing(
+        self, item: ExistingInventoryItem
+    ) -> MongoExistingInventoryItem:
+        return self._mapper.map(item, fields_mapping=self.__field_mapping_to_db(item))
 
-    def __len__(self) -> int:
-        return self.__collection.count_documents({})
+    def _contract_map_to_db_new(self, item: NewInventoryItem) -> MongoNewInventoryItem:
+        return self._mapper.map(item, fields_mapping=self.__field_mapping_to_db(item))
 
-    def set_existing_item(self, item: ExistingInventoryItem) -> None:
+    def _item_extra_validation(
+        self, item: MongoExistingInventoryItem | MongoNewInventoryItem
+    ) -> None:
         if item.digikey_part_number is not None:
-            possible_match = self.get_item_by_digikey_part_number(
-                item.digikey_part_number
-            )
-            if possible_match is not None and possible_match.id != item.id:
-                raise DuplicateDigiKeyPartNumberError(possible_match.id, item.id)
-
-        if self.__collection.find_one({"_id": item.id}) is None:
-            raise KeyError(
-                f"Item with ID {item.id} not found in inventory. Keys should be generated by the DB, not the user."
-            )
-
-        db_item: MongoExistingInventoryItem = self.__mapper.map(
-            item, fields_mapping=self.__field_mapping_to_db(item)
-        )
-
-        # we need the id field to show up as _id for MongoDB
-        result = self.__collection.replace_one(
-            {"_id": item.id}, db_item.model_dump(by_alias=True)
-        )
-        if result.matched_count != 1:
-            raise RuntimeError(
-                f"Item with ID {item.id} not found in inventory - but we just checked!"
-            )
-
-    def add_new_item(self, item: NewInventoryItem) -> ObjectId:
-        if item.digikey_part_number is not None:
+            # digikey part number is unique
             possible_match = self.get_item_by_digikey_part_number(
                 item.digikey_part_number
             )
             if possible_match is not None:
-                raise DuplicateDigiKeyPartNumberError(possible_match.id, None)
-
-        db_item: MongoNewInventoryItem = self.__mapper.map(
-            item, fields_mapping=self.__field_mapping_to_db(item)
-        )
-
-        # MongoNewInventoryItem doesn't have an id field, so we don't need by_alias=True
-        result = self.__collection.insert_one(db_item.model_dump())
-        return result.inserted_id
+                if isinstance(item, MongoExistingInventoryItem):
+                    if (
+                        possible_match.id != item.id
+                    ):  # check if just updating the same item
+                        raise DuplicateDigiKeyPartNumberError(
+                            possible_match.id, item.id
+                        )
+                else:
+                    raise DuplicateDigiKeyPartNumberError(possible_match.id, None)
 
     def add_to_slot(self, item_id: ObjectId, slot_id: int):
-        result = self.__collection.update_one(
+        result = self._collection.update_one(
             {"_id": item_id},
             {"$set": {f"slot_ids.{slot_id}": None}},
         )
@@ -182,7 +159,7 @@ class MongoInventoryRepo(InventoryRepository):
         if slot_id not in slots:
             raise KeyError(f"Item {item_id} not in slot {slot_id}")
 
-        result = self.__collection.update_one(
+        result = self._collection.update_one(
             {"_id": item_id},
             {"$unset": {f"slot_ids.{slot_id}": None}},
         )
@@ -190,7 +167,7 @@ class MongoInventoryRepo(InventoryRepository):
             raise KeyError(f"No item found for key {item_id}")
 
     def get_slots_of_item(self, item_id: ObjectId) -> set[int]:
-        x = self.__collection.find_one({"_id": item_id}, {"slot_ids": 1})
+        x = self._collection.find_one({"_id": item_id}, {"slot_ids": 1})
         if x is None:
             raise KeyError(f"No item found for key {item_id}")
         return {int(k) for k in x["slot_ids"]}
@@ -198,23 +175,38 @@ class MongoInventoryRepo(InventoryRepository):
     def get_item_by_digikey_part_number(
         self, digikey_part_number: str
     ) -> ExistingInventoryItem | None:
-        x = self.__collection.find_one({"digikey_part_number": digikey_part_number})
+        x = self._collection.find_one({"digikey_part_number": digikey_part_number})
         if x is None:
             return None
         item = MongoExistingInventoryItem(**x)
-        return self.__mapper.map(
+        return self._mapper.map(
             item,
             fields_mapping=self.__field_mapping_from_db(item),
         )
 
+    def get_items_by_manufacturer_part_numbers(
+        self, manufacturer_part_numbers: list[str]
+    ) -> list[ExistingInventoryItem]:
+        if not manufacturer_part_numbers:
+            return []
+
+        result = self._collection.find(
+            {"manufacturer_part_number": {"$in": manufacturer_part_numbers}}
+        )
+
+        return [
+            self._db_map_to_contract_existing(MongoExistingInventoryItem(**x))
+            for x in result
+        ]
+
     def get_slot(self, slot_id: int) -> list[ExistingInventoryItem]:
-        result = self.__collection.find({f"slot_ids.{slot_id}": {"$exists": True}})
+        result = self._collection.find({f"slot_ids.{slot_id}": {"$exists": True}})
 
         output: list[ExistingInventoryItem] = []
         for x in result:
             item = MongoExistingInventoryItem(**x)
             output.append(
-                self.__mapper.map(
+                self._mapper.map(
                     item,
                     fields_mapping=self.__field_mapping_from_db(item),
                 )
@@ -222,30 +214,3 @@ class MongoInventoryRepo(InventoryRepository):
         if not output:
             raise KeyError(f"No items in slot {slot_id}")
         return output
-
-    def keys(self) -> KeysView[ObjectId]:
-        return set(e["_id"] for e in self.__collection.find({}, {"_id": 1}))  # type: ignore
-
-    def values(self) -> ValuesView[ExistingInventoryItem]:
-        result = self.__collection.find({})
-        output: list[ExistingInventoryItem] = []
-        for x in result:
-            item = MongoExistingInventoryItem(**x)
-            output.append(
-                self.__mapper.map(
-                    item,
-                    fields_mapping=self.__field_mapping_from_db(item),
-                )
-            )
-        return output  # type: ignore
-
-    def items(self) -> ItemsView[ObjectId, ExistingInventoryItem]:
-        result = self.__collection.find({})
-        output: dict[ObjectId, ExistingInventoryItem] = {}
-        for x in result:
-            item = MongoExistingInventoryItem(**x)
-            output[item.id] = self.__mapper.map(
-                item,
-                fields_mapping=self.__field_mapping_from_db(item),
-            )
-        return output.items()
