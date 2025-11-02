@@ -12,7 +12,6 @@ import Header from "../Header";
 import { ExistingBomOutput } from "../openapi/inventory";
 import CLIENT from "./../client";
 import { ErrorReporting } from "..";
-import BomEntryTable from "./bom_components/BomEntryTable";
 import BomUpload from "./bom_components/BomUpload";
 
 function useAllBoms(): [ExistingBomOutput[], () => void] {
@@ -33,9 +32,7 @@ function useAllBoms(): [ExistingBomOutput[], () => void] {
 function BOM() {
   const [boms, refreshBoms] = useAllBoms();
   const [searchTerm, setSearchTerm] = useState('');
-  const [viewModalOpen, setViewModalOpen] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [selectedBom, setSelectedBom] = useState<ExistingBomOutput | null>(null);
   const setErr = useContext(ErrorReporting);
 
   const filteredBoms = useMemo(() => {
@@ -59,11 +56,6 @@ function BOM() {
         .catch(setErr);
     }
   }, [setErr, refreshBoms]);
-
-  const handleView = useCallback((bom: ExistingBomOutput) => {
-    setSelectedBom(bom);
-    setViewModalOpen(true);
-  }, []);
 
   const handleUploadSuccess = useCallback(() => {
     setUploadModalOpen(false);
@@ -144,10 +136,11 @@ function BOM() {
                     <td>
                       <Stack direction="row" gap="0.5rem">
                         <Button
+                          component={Link}
+                          to={`/bom/${bom.id}`}
                           size="sm"
                           variant="soft"
                           startDecorator={<VisibilityIcon />}
-                          onClick={() => handleView(bom)}
                         >
                           View
                         </Button>
@@ -178,36 +171,6 @@ function BOM() {
             </tbody>
           </Table>
         </Card>
-
-        {/* View Modal */}
-        <Modal open={viewModalOpen} onClose={() => {
-          setViewModalOpen(false);
-          setSelectedBom(null);
-        }}>
-          <ModalDialog sx={{ maxWidth: '1000px', width: '100%', maxHeight: '90vh', overflow: 'auto' }}>
-            <ModalClose />
-            <Typography level="h2">
-              {selectedBom?.name || 'BOM Details'}
-            </Typography>
-            {selectedBom && (
-              <Stack gap="1rem" sx={{ mt: 2 }}>
-                <Stack direction="row" gap="2rem">
-                  <Typography><strong>Name:</strong> {selectedBom.name || '(Unnamed)'}</Typography>
-                  <Typography><strong>Project:</strong> {selectedBom.project?.name}</Typography>
-                </Stack>
-                <Typography><strong>Info Line:</strong> {selectedBom.infoLine}</Typography>
-                {selectedBom.project && (
-                  <Stack>
-                    <Typography><strong>Author:</strong> {selectedBom.project.authorNames}</Typography>
-                    <Typography><strong>Comments:</strong> {selectedBom.project.comments}</Typography>
-                  </Stack>
-                )}
-                <Typography level="title-md">Entries ({selectedBom.rows?.length || 0})</Typography>
-                <BomEntryTable entries={selectedBom.rows || []} />
-              </Stack>
-            )}
-          </ModalDialog>
-        </Modal>
 
         {/* Upload Modal */}
         <Modal open={uploadModalOpen} onClose={() => setUploadModalOpen(false)}>
