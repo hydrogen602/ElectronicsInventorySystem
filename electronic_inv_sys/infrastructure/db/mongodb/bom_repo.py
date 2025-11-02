@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from bson import ObjectId
 from pymongo import MongoClient
 from automapper import Mapper  # pyright: ignore[reportMissingTypeStubs]
 
@@ -53,7 +54,8 @@ class MongoBomRepo(
                     row,
                     fields_mapping={
                         "inventory_item_mapping_ids": set(
-                            row.inventory_item_mapping_ids.keys()
+                            ObjectId(key)
+                            for key in row.inventory_item_mapping_ids.keys()
                         )
                     },
                 )
@@ -72,7 +74,8 @@ class MongoBomRepo(
                     row,
                     fields_mapping={
                         "inventory_item_mapping_ids": {
-                            obj_id: None for obj_id in row.inventory_item_mapping_ids
+                            str(obj_id): None
+                            for obj_id in row.inventory_item_mapping_ids
                         }
                     },
                 )
@@ -91,7 +94,8 @@ class MongoBomRepo(
                     row,
                     fields_mapping={
                         "inventory_item_mapping_ids": {
-                            obj_id: None for obj_id in row.inventory_item_mapping_ids
+                            str(obj_id): None
+                            for obj_id in row.inventory_item_mapping_ids
                         }
                     },
                 )

@@ -1,4 +1,4 @@
-import { Button, Card, Chip, ChipDelete, FormControl, FormLabel, Input, Stack, Textarea, Typography } from "@mui/joy";
+import { Button, Card, Chip, ChipDelete, Checkbox, FormControl, FormLabel, Input, Stack, Textarea, Typography } from "@mui/joy";
 import DeleteIcon from '@mui/icons-material/Delete';
 import LinkIcon from '@mui/icons-material/Link';
 import { useState, useEffect, useCallback, useContext } from "react";
@@ -147,6 +147,13 @@ export default function BomEntryEditor({ entry, index, onUpdate, onRemove }: Bom
             value={entry.comments || ''}
             onChange={(e) => updateField('comments', e.target.value)}
             minRows={2}
+          />
+        </FormControl>
+        <FormControl>
+          <Checkbox
+            label="Do not place"
+            checked={entry.doNotPlace || false}
+            onChange={(e) => updateField('doNotPlace', e.target.checked)}
           />
         </FormControl>
 

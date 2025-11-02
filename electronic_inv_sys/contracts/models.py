@@ -185,6 +185,7 @@ class BomEntry(BaseModel):
     comments: str
     inventory_item_mapping_ids: set[Annotated[ObjectId, ObjectIdPydanticAnnotation]]
     fusion360_ext: FusionBomEntry | None
+    do_not_place: bool = False
 
 
 class ProjectInfo(BaseModel):

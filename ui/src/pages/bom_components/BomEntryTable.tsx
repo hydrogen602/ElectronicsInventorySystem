@@ -25,7 +25,13 @@ export default function BomEntryTable({ entries }: BomEntryTableProps) {
       </thead>
       <tbody>
         {entries.map((entry, idx) => (
-          <tr key={idx}>
+          <tr
+            key={idx}
+            style={{
+              opacity: entry.doNotPlace ? 0.5 : 1,
+              color: entry.doNotPlace ? '#999' : undefined,
+            }}
+          >
             <td>{entry.qty}</td>
             <td>{entry.device}</td>
             <td>{entry.value}</td>

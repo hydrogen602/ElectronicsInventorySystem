@@ -68,6 +68,7 @@ export default function BomForm({ bom, onSubmit, onCancel, menuRef }: BomFormPro
       parts: [],
       inventoryItemMappingIds: new Set(),
       fusion360Ext: null,
+      doNotPlace: false,
     };
     setRows([...rows, newEntry]);
   };

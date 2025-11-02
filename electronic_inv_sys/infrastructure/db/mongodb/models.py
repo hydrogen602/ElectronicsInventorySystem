@@ -1,9 +1,8 @@
-from typing import Annotated, Self
+from typing import Self
 from bson import ObjectId
 from pydantic import BaseModel, ConfigDict, NonNegativeInt, PositiveInt
 
 from electronic_inv_sys.contracts.models import (
-    ObjectIdPydanticAnnotation,
     WithId,
 )
 
@@ -81,9 +80,10 @@ class MongoBomEntry(BaseModel):
     manufacturer: str | None
     comments: str
     inventory_item_mapping_ids: dict[
-        Annotated[ObjectId, ObjectIdPydanticAnnotation], None
-    ]
+        str, None
+    ]  # ObjectId stored as str because of bson only does string keys
     fusion360_ext: MongoFusionBomEntry | None
+    do_not_place: bool = False
 
 
 class MongoProjectInfo(BaseModel):
